@@ -9,6 +9,7 @@ const jwksUrl = 'https://dev-cftnz3saxqaigxln.us.auth0.com/.well-known/jwks.json
 export async function handler(event) {
   try {
     const jwtToken = await verifyToken(event.authorizationToken)
+    logger.info('User was authorized', { userId: jwtToken.sub })
 
     return {
       principalId: jwtToken.sub,

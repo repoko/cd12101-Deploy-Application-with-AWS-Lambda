@@ -195,3 +195,31 @@ We can then use curl command to upload an image (`image.jpg` in this example) to
 curl -X PUT -T image.jpg -L "https://serverless-c4-todo-images.s3.us-east-1.amazonaws.com/...&x-id=PutObject"
 ```
 
+
+
+---
+
+## Submission Notes – Changes From the Original Guide
+
+### Development environment
+- Built and deployed from **GitHub Codespaces**, because Docker Desktop and local tooling are restricted on my work laptop by organization policy.
+- Used **Node.js 20** instead of 14. The starter code uses AWS SDK v3, Middy v3 and ES modules, which need a newer Node version, and AWS no longer allows creating new `nodejs14.x` Lambdas. The Lambda runtime is set to `nodejs20.x`.
+- Used **Serverless Framework v3** (no dashboard login needed). AWS credentials came from the Udacity Cloud Lab, including a session token, set with `aws configure`.
+
+### Auth0
+- Created a custom Auth0 API (`https://todo-api`) and used it as the token audience instead of the Auth0 Management API, so the app can get access tokens using refresh tokens.
+- Granted the application user-delegated access to the API (`read:todo`, `write:todo`, `delete:todo`).
+- Removed mismatched per-call `scope` values in the frontend (one was the typo `read:todos`), so all API calls use the scopes requested at login.
+- Enabled `useRefreshTokens` and `cacheLocation="localstorage"` so login works in browsers that block third-party cookies.
+
+### Best practices implemented
+- **Separation of concerns:** `businessLogic`, `dataLayer` and `fileStorage` layers
+- **Request validation:** API Gateway request schemas in `models/`
+- **Per-function IAM permissions** using `serverless-iam-roles-per-function`
+- **X-Ray distributed tracing** with DynamoDB and S3 clients wrapped by the X-Ray SDK
+- **Structured JSON logging** with Winston
+
+### Screenshots
+See the `screenshots/` folder: the working app, the X-Ray trace map and CloudWatch logs.
+
+- Skipped the Serverless Dashboard app setup (the `serverless` onboarding command). Serverless Framework v3 deploys directly with AWS credentials, so a dashboard org/app isn't required.
