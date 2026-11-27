@@ -1,225 +1,193 @@
-# Serverless TODO
-
-To implement this project you need to implement a simple TODO application using AWS Lambda and Serverless framework. Search for all the `TODO:` comments in the code to find the placeholders that you need to implement.
-
-# Functionality of the application
-
-This appliation will allow to create/remove/update/get TODO items. Each TODO item can optionally have an attachment image. Each user only has access to TODO items that he/she has created. 
-
-# Functions to be implemented
-
-To implement this project you need to implement the following functions and configure them in the `serverless.yml` file:
-
-* `Auth` - this function should implement a custom authorizer for API Gateway that should be added to all other functions.
-* `GetTodos` - should return all TODOs for a current user. 
-* `CreateTodo` - should create a new TODO for a current user. A shape of data send by a client application to this function can be found in the `CreateTodoRequest.ts` file
-* `UpdateTodo` - should update a TODO item created by a current user. A shape of data send by a client application to this function can be found in the `UpdateTodoRequest.ts` file
-* `DeleteTodo` - should delete a TODO item created by a current user. Expects an id of a TODO item to remove.
-* `GenerateUploadUrl` - returns a presigned url that can be used to upload an attachment file for a TODO item. 
-
-All functions are already connected to appriate events from API gateway
-
-An id of a user can be extracted from a JWT token passed by a client
-
-You also need to add any necessary resources to the `resources` section of the `serverless.yml` file such as DynamoDB table and and S3 bucket.
-
-# Frontend
-
-The `client` folder contains a web application that can use the API that should be developed in the project.
-
-To use it please edit the `config.ts` file in the `client` folder:
-
-```ts
-const apiId = '...' API Gateway id
-export const apiEndpoint = `https://${apiId}.execute-api.us-east-1.amazonaws.com/dev`
-
-export const authConfig = {
-  domain: '...',    // Domain from Auth0
-  clientId: '...',  // Client id from an Auth0 application
-  callbackUrl: 'http://localhost:3000/callback'
-}
-```
-
-
-# Suggestions
-
-To store TODO items you might want to use a DynamoDB table with local secondary index(es). A create a local secondary index you need to a create a DynamoDB resource like this:
-
-```yml
-
-TodosTable:
-  Type: AWS::DynamoDB::Table
-  Properties:
-    AttributeDefinitions:
-      - AttributeName: partitionKey
-        AttributeType: S
-      - AttributeName: sortKey
-        AttributeType: S
-      - AttributeName: indexKey
-        AttributeType: S
-    KeySchema:
-      - AttributeName: partitionKey
-        KeyType: HASH
-      - AttributeName: sortKey
-        KeyType: RANGE
-    BillingMode: PAY_PER_REQUEST
-    TableName: ${self:provider.environment.TODOS_TABLE}
-    LocalSecondaryIndexes:
-      - IndexName: ${self:provider.environment.INDEX_NAME}
-        KeySchema:
-          - AttributeName: partitionKey
-            KeyType: HASH
-          - AttributeName: indexKey
-            KeyType: RANGE
-        Projection:
-          ProjectionType: ALL # What attributes will be copied to an index
-
-```
-
-To query an index you need to use the `query()` method like:
-
-```ts
-await this.dynamoDBClient
-  .query({
-    TableName: 'table-name',
-    IndexName: 'index-name',
-    KeyConditionExpression: 'paritionKey = :paritionKey',
-    ExpressionAttributeValues: {
-      ':paritionKey': partitionKeyValue
-    }
-  })
-  .promise()
-```
-
-# How to run the application
-
-## Backend
-
-To deploy an application run the following commands:
-
-```
-cd backend
-npm install
-sls deploy -v
-```
-
-## Frontend
-
-To run a client application first edit the `client/src/config.ts` file to set correct parameters. And then run the following commands
-
-```
-cd client
-npm install
-npm run start
-```
-
-This should start a development server with the React application that will interact with the serverless TODO application.
-
-# "curl" commands
-
-An alternative way to test your API you can use the following curl commands. For all examples below you would need to replace:
-
-* {API-ID} - with you API's ID that is returned by the Serverless framework
-* {JWT-token} - a JWT token from the web application
-
-## Get all TODOs
-
-To fetch all TODOs you would need to send the following GET request:
-
-```sh
-curl --location --request GET 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos' \
---header 'Authorization: Bearer {JWT-token}'
-```
-
-## Create a new TODO
-
-To create a new TODO you would need to send a POST request and provide a JSON with two mandatory fields: `name` and `dueDate`.
-
-```sh
-curl --location --request POST 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos' \
---header 'Authorization: Bearer {JWT-token}' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "name": "Buy bread",
-    "dueDate": "2022-12-12"
-}'
-```
-
-## Update a TODO
-
-To update a TODO you would need to send a PATCH request and provide one of the following fields: `name`, `dueDate`, and boolean `done`.
-
-You would also need to provide an ID of an existing TODO in the URL.
-
-```sh
-curl --location --request PATCH 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}' \
---header 'Authorization: Bearer {JWT-token}' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "name": "Buy bread",
-    "dueDate": "2022-12-12",
-    "done": true
-}'
-```
-
-## Remove TODO
-
-To remove a TODO you would need to send a `DELETE` request, and provide an ID of an existing TODO, as well as other parameters.
-
-```sh
-curl --location --request DELETE 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}' \
---header 'Authorization: Bearer {JWT-token}'
-```
-
-
-## Upload image attachment
-
-To upload an image attachment you would first need to send a POST request to the following URL:
-
-```sh
-curl --location --request POST 'https://{API-ID}.execute-api.us-east-1.amazonaws.com/dev/todos/{TODO-ID}/attachment' \
---header 'Authorization: Bearer {JWT-token}'
-```
-
-It should return a response like this that would provide a pre-signed URL:
-
-```json
-{
-    "uploadUrl": "https://serverless-c4-todo-images.s3.us-east-1.amazonaws.com/...&x-id=PutObject"
-}
-```
-
-We can then use curl command to upload an image (`image.jpg` in this example) to S3 using this pre-signed URL:
-
-```sh
-curl -X PUT -T image.jpg -L "https://serverless-c4-todo-images.s3.us-east-1.amazonaws.com/...&x-id=PutObject"
-```
-
-
-
 ---
 
-## Submission Notes – Changes From the Original Guide
+# Serverless TODO Application on AWS
 
-### Development environment
-- Built and deployed from **GitHub Codespaces**, because Docker Desktop and local tooling are restricted on my work laptop by organization policy.
-- Used **Node.js 20** instead of 14. The starter code uses AWS SDK v3, Middy v3 and ES modules, which need a newer Node version, and AWS no longer allows creating new `nodejs14.x` Lambdas. The Lambda runtime is set to `nodejs20.x`.
-- Used **Serverless Framework v3** (no dashboard login needed). AWS credentials came from the Udacity Cloud Lab, including a session token, set with `aws configure`.
+## Project Overview
 
-### Auth0
-- Created a custom Auth0 API (`https://todo-api`) and used it as the token audience instead of the Auth0 Management API, so the app can get access tokens using refresh tokens.
-- Granted the application user-delegated access to the API (`read:todo`, `write:todo`, `delete:todo`).
-- Removed mismatched per-call `scope` values in the frontend (one was the typo `read:todos`), so all API calls use the scopes requested at login.
-- Enabled `useRefreshTokens` and `cacheLocation="localstorage"` so login works in browsers that block third-party cookies.
+This project implements a serverless task management application using AWS Lambda, API Gateway, DynamoDB, Amazon S3, and the Serverless Framework.
 
-### Best practices implemented
-- **Separation of concerns:** `businessLogic`, `dataLayer` and `fileStorage` layers
-- **Request validation:** API Gateway request schemas in `models/`
-- **Per-function IAM permissions** using `serverless-iam-roles-per-function`
-- **X-Ray distributed tracing** with DynamoDB and S3 clients wrapped by the X-Ray SDK
-- **Structured JSON logging** with Winston
+The application allows authenticated users to create, retrieve, update, and delete TODO items, mark tasks as completed, and upload image attachments.
 
-### Screenshots
-See the `screenshots/` folder: the working app, the X-Ray trace map and CloudWatch logs.
+The backend follows a layered architecture to separate business logic, database operations, file storage, and Lambda request handling.
 
-- Skipped the Serverless Dashboard app setup (the `serverless` onboarding command). Serverless Framework v3 deploys directly with AWS credentials, so a dashboard org/app isn't required.
+## Technologies Used
+
+- **Backend:** Node.js 20, JavaScript, AWS Lambda
+- **Frontend:** React
+- **API:** Amazon API Gateway
+- **Database:** Amazon DynamoDB
+- **File Storage:** Amazon S3
+- **Authentication:** Auth0 with JWT authorization
+- **Infrastructure:** Serverless Framework v3, AWS CloudFormation
+- **Monitoring:** AWS X-Ray, Amazon CloudWatch, Winston
+- **Development Environment:** GitHub Codespaces
+- **Version Control:** Git and GitHub
+
+## Application Features
+
+- User authentication through Auth0
+- Create, retrieve, update, and delete TODO items
+- Mark tasks as completed
+- Upload and display image attachments
+- User-specific TODO retrieval using authenticated user IDs
+- Request validation through API Gateway
+- Structured application logging and distributed tracing
+
+## Application Architecture
+
+The application uses the following architecture:
+
+**React Frontend → API Gateway → AWS Lambda → DynamoDB**
+
+Additional integrations:
+
+- **Auth0:** Handles authentication and JWT authorization.
+- **Amazon S3:** Stores uploaded attachments using presigned URLs.
+- **AWS X-Ray:** Provides distributed tracing.
+- **Amazon CloudWatch:** Captures Lambda logs and monitoring information.
+
+## Backend Implementation
+
+The backend implements six Lambda functions:
+
+| Function | Purpose |
+|---|---|
+| Auth | Validates JWT authentication tokens |
+| GetTodos | Retrieves TODO items belonging to the authenticated user |
+| CreateTodo | Creates a new TODO item |
+| UpdateTodo | Updates an existing TODO item |
+| DeleteTodo | Deletes a TODO item |
+| GenerateUploadUrl | Generates a presigned S3 upload URL |
+
+### Separation of Concerns
+
+The backend separates responsibilities into:
+
+- `businessLogic/`: Application operations and business rules
+- `dataLayer/`: DynamoDB database operations
+- `fileStorage/`: S3 attachment handling
+- `lambda/`: HTTP request handlers and authorization
+
+Asynchronous operations use JavaScript `async/await`.
+
+## Database Design
+
+Amazon DynamoDB stores TODO items using a composite primary key:
+
+- **Partition key:** `userId`
+- **Sort key:** `todoId`
+
+A local secondary index named `CreatedAtIndex` supports querying TODO items by creation date.
+
+The application uses DynamoDB `Query` operations rather than table scans to retrieve user-specific records.
+
+## Authentication and Security
+
+Auth0 provides authentication through a Single Page Application configured with RS256 JWT tokens.
+
+A custom API Gateway Lambda authorizer validates JWT signatures using Auth0's published JSON Web Key Set (JWKS).
+
+A dedicated Auth0 API, `https://todo-api`, was configured to provide the appropriate token audience.
+
+The frontend requests the following permissions:
+
+- `read:todo`
+- `write:todo`
+- `delete:todo`
+
+User-specific DynamoDB operations use the authenticated user's identifier.
+
+AWS IAM permissions are configured individually for each Lambda function through the Serverless Framework.
+
+## Monitoring and Best Practices
+
+The application implements:
+
+- **Request validation:** API Gateway request schemas
+- **Distributed tracing:** AWS X-Ray integration
+- **Structured logging:** Winston JSON logs
+- **IAM permissions:** Per-function access permissions
+- **Database efficiency:** DynamoDB queries with a composite key
+- **Infrastructure as Code:** AWS resources defined in `serverless.yml`
+
+## Development Environment and Alternatives
+
+Several adjustments were made to accommodate the development environment and compatibility requirements.
+
+### GitHub Codespaces
+
+GitHub Codespaces was used instead of the Udacity workspace or local development.
+
+The organization-managed laptop has restrictions on installing development software, including Docker Desktop.
+
+Codespaces provided a cloud-based environment for development, dependency installation, testing, and AWS deployment.
+
+### Node.js Compatibility
+
+Node.js 20 was used instead of Node.js 14 because the older runtime is no longer supported for new AWS Lambda deployments.
+
+The Lambda runtime was updated to `nodejs20.x` in `serverless.yml`.
+
+### Serverless Framework v3
+
+Serverless Framework v3 was used to deploy the backend directly to AWS.
+
+**The Serverless Dashboard application setup was skipped because Serverless Framework v3 supports deployment using AWS credentials without requiring a Dashboard organization or application.**
+
+AWS Cloud Lab credentials, including the temporary session token, were configured through the AWS CLI.
+
+### Auth0 Integration Adjustments
+
+A dedicated Auth0 API was created to replace the original Auth0 Management API audience.
+
+User-delegated API access was configured with the appropriate permissions.
+
+The frontend authentication configuration was adjusted to support refresh tokens and browser local storage.
+
+Mismatched token scopes in frontend requests were corrected to ensure successful authentication and API access.
+
+## Deployment
+
+The backend was deployed using the Serverless Framework.
+
+From the `starter/backend` directory:
+
+1. Install dependencies using `npm install`.
+2. Configure valid AWS credentials.
+3. Deploy using `serverless deploy --verbose`.
+
+The Serverless Framework provisions the necessary AWS infrastructure through CloudFormation.
+
+The frontend is configured through `starter/client/.env` using:
+
+- `REACT_APP_AUTH0_DOMAIN`
+- `REACT_APP_AUTH0_CLIENT_ID`
+- `REACT_APP_API_ENDPOINT`
+
+The frontend can then be started using `npm install` and `npm start`.
+
+**Note:** AWS credentials and authentication secrets must not be committed to the repository.
+
+## Testing
+
+The following functionality was successfully tested through the React application:
+
+- Auth0 login
+- Creating TODO items
+- Retrieving TODO items
+- Updating TODO items
+- Marking TODO items as completed
+- Deleting TODO items
+- Uploading and displaying image attachments
+
+AWS CloudWatch logs and X-Ray traces were also reviewed to verify application activity.
+
+User-specific data isolation is implemented through the DynamoDB partition key and authenticated user ID. Testing with two separate user accounts has not yet been performed.
+
+## Project Completion
+
+The application was successfully deployed to AWS using the Serverless Framework.
+
+Core CRUD operations, authentication, image attachments, structured logging, and distributed tracing were implemented and verified.
+
+The project demonstrates practical experience with serverless application development, AWS services, authentication, cloud deployment, and backend architecture.
